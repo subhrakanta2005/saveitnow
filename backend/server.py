@@ -9,6 +9,10 @@ import re
 
 app = FastAPI(title="SaveItNow API")
 
+origins = [
+    "http://localhost:3000",
+    "https://saveitnow.vercel.app",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -1,0 +1,49 @@
+.hiw-page { padding: 80px 20px; }
+.hiw-container { max-width: 680px; margin: 0 auto; }
+
+.hiw-eyebrow {
+  font-size: 0.72rem;
+  font-family: 'Space Mono', monospace;
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
+}
+
+.hiw-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-bottom: 50px;
+}
+
+.grad-text {
+  background: linear-gradient(135deg, #a78bfa, #ec4899, #67e8f9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hiw-steps { display: flex; flex-direction: column; gap: 16px; }
+
+.hiw-step {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.hiw-num {
+  font-family: 'Space Mono', monospace;
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 56px;
+}
+
+.hiw-step-title { font-weight: 600; font-size: 1rem; margin-bottom: 6px; }
+.hiw-step-desc { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }

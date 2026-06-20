@@ -1,21 +1,22 @@
 .navbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 40px;
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(12px);
-  background: rgba(8, 8, 16, 0.7);
   position: sticky;
   top: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 2rem;
+  background: rgba(8,8,16,0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
-.logo {
-  font-family: 'Space Mono', monospace;
-  font-size: 1.1rem;
+.nav-logo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.3rem;
   font-weight: 700;
-  background: linear-gradient(90deg, #7c3aed, #ec4899, #06b6d4);
+  text-decoration: none;
+  background: linear-gradient(135deg, #a855f7, #ec4899, #06b6d4);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -23,31 +24,34 @@
 
 .nav-links {
   display: flex;
-  align-items: center;
-  gap: 24px;
+  gap: 0.25rem;
 }
 
 .nav-link {
-  font-size: 0.88rem;
-  color: var(--muted);
-  transition: color 0.15s;
+  text-decoration: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: all 0.2s;
 }
 
-.nav-link:hover {
-  color: var(--text);
-}
+.nav-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.nav-link.active { color: #fff; background: rgba(168,85,247,0.12); }
 
 .nav-badge {
-  font-size: 0.7rem;
-  background: var(--border);
-  border: 1px solid #2a2a44;
-  color: var(--muted);
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 100px;
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.25);
+  color: #a855f7;
+  letter-spacing: 0.04em;
 }
 
-@media (max-width: 500px) {
-  .navbar { padding: 14px 20px; }
-  .nav-link { display: none; }
+@media (max-width: 600px) {
+  .nav-links { display: none; }
+  .navbar { padding: 1rem 1.25rem; }
 }

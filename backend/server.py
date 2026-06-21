@@ -67,7 +67,7 @@ async def instagram_info(url: str) -> dict:
     async with httpx.AsyncClient(timeout=25) as client:
         try:
             r = await client.post(
-                f"https://{INSTAGRAM_HOST}/links",
+                f"https://{INSTAGRAM_HOST}/api/instagram/links",
                 headers=headers,
                 json={"url": url},
             )

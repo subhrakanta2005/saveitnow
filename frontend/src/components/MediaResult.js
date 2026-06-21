@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import './MediaResult.css';
 
-const [thumbError, setThumbError] = useState(false);
 const PLATFORM_EMOJI = {
   instagram: '📸', youtube: '▶️', tiktok: '🎵',
   twitter: '🐦', facebook: '👥', reddit: '💬',
@@ -19,6 +18,7 @@ export default function MediaResult({ data, onDownload, color }) {
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [done, setDone] = useState(false);
+  const [thumbError, setThumbError] = useState(false);
 
   if (!data) return null;
 
@@ -41,7 +41,7 @@ export default function MediaResult({ data, onDownload, color }) {
   return (
     <div className="result-card">
       <div className="media-preview">
-       {data.thumbnail && !thumbError ? (
+        {data.thumbnail && !thumbError ? (
           <img className="thumb" src={data.thumbnail} alt="thumbnail"
             onError={() => setThumbError(true)} />
         ) : (

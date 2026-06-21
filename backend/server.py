@@ -54,9 +54,16 @@ def format_size(b):
 # INSTAGRAM — instagram120
 # Endpoints used: POST /links, GET /get
 # ══════════════════════════════════════════
+
 async def instagram_info(url: str) -> dict:
+    if not RAPIDAPI_KEY:
+        raise HTTPException(status_code=500, detail="Server misconfigured: RAPIDAPI_KEY is not set.")
+
     headers = {**RAPIDAPI_HEADERS, "x-rapidapi-host": INSTAGRAM_HOST}
+    debug_info = {}
+
     async with httpx.AsyncClient(timeout=25) as client:
+        data = {}
         # Try /links first (best for reels/posts)
         try:
             r = await client.post(
@@ -64,8 +71,14 @@ async def instagram_info(url: str) -> dict:
                 headers=headers,
                 json={"url": url},
             )
-            data = r.json()
-        except Exception:
+            debug_info["links_status"] = r.status_code
+            debug_info["links_body"] = r.text[:300]
+            if r.status_code == 200:
+                data = r.json()
+            else:
+                data = {}
+        except Exception as e:
+            debug_info["links_exception"] = str(e)
             data = {}
 
         formats = []
@@ -89,32 +102,39 @@ async def instagram_info(url: str) -> dict:
                     headers=headers,
                     params={"url": url},
                 )
-                d2 = r2.json()
-                video_url = d2.get("video_url") or d2.get("url")
-                thumb = d2.get("thumbnail") or d2.get("display_url")
-                if video_url:
-                    formats.append({
-                        "format_id": video_url,
-                        "label": "Video",
-                        "ext": "mp4",
-                        "filesize": None,
-                        "direct_url": video_url,
-                    })
-                # Image post
-                img_url = d2.get("display_url") or d2.get("image_url")
-                if img_url and not video_url:
-                    formats.append({
-                        "format_id": img_url,
-                        "label": "Image",
-                        "ext": "jpg",
-                        "filesize": None,
-                        "direct_url": img_url,
-                    })
-            except Exception:
-                pass
+                debug_info["get_status"] = r2.status_code
+                debug_info["get_body"] = r2.text[:300]
+                if r2.status_code == 200:
+                    d2 = r2.json()
+                    video_url = d2.get("video_url") or d2.get("url")
+                    thumb = d2.get("thumbnail") or d2.get("display_url")
+                    if video_url:
+                        formats.append({
+                            "format_id": video_url,
+                            "label": "Video",
+                            "ext": "mp4",
+                            "filesize": None,
+                            "direct_url": video_url,
+                        })
+                    img_url = d2.get("display_url") or d2.get("image_url")
+                    if img_url and not video_url:
+                        formats.append({
+                            "format_id": img_url,
+                            "label": "Image",
+                            "ext": "jpg",
+                            "filesize": None,
+                            "direct_url": img_url,
+                        })
+                    data = d2 or data
+            except Exception as e:
+                debug_info["get_exception"] = str(e)
 
         if not formats:
-            raise HTTPException(status_code=400, detail="Could not fetch Instagram media. Make sure the content is public.")
+            # Surface the real reason instead of a generic message
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not fetch Instagram media. Debug: {debug_info}"
+            )
 
     return {
         "title": data.get("caption") or data.get("title") or "Instagram Media",
@@ -124,7 +144,6 @@ async def instagram_info(url: str) -> dict:
         "uploader": data.get("username") or data.get("owner"),
         "formats": formats,
     }
-
 # ══════════════════════════════════════════
 # YOUTUBE — youtube138
 # Endpoints: GET /search, GET /videos/info

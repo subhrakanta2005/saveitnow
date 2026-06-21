@@ -52,98 +52,80 @@ def format_size(b):
 
 # ══════════════════════════════════════════
 # INSTAGRAM — instagram120
-# Endpoints used: POST /links, GET /get
+# Endpoint used: POST /links
+# Response shape: a JSON array of items, each with
+#   "urls": [{ "url", "extension", "quality", ... }],
+#   "meta": { "title", "username", ... },
+#   "pictureUrl"
 # ══════════════════════════════════════════
-
 async def instagram_info(url: str) -> dict:
     if not RAPIDAPI_KEY:
         raise HTTPException(status_code=500, detail="Server misconfigured: RAPIDAPI_KEY is not set.")
 
     headers = {**RAPIDAPI_HEADERS, "x-rapidapi-host": INSTAGRAM_HOST}
-    debug_info = {}
 
     async with httpx.AsyncClient(timeout=25) as client:
-        data = {}
-        # Try /links first (best for reels/posts)
         try:
             r = await client.post(
                 f"https://{INSTAGRAM_HOST}/links",
                 headers=headers,
                 json={"url": url},
             )
-            debug_info["links_status"] = r.status_code
-            debug_info["links_body"] = r.text[:300]
-            if r.status_code == 200:
-                data = r.json()
-            else:
-                data = {}
         except Exception as e:
-            debug_info["links_exception"] = str(e)
-            data = {}
+            raise HTTPException(status_code=400, detail=f"Could not reach Instagram API: {e}")
 
-        formats = []
-        items = data.get("items") or data.get("data") or []
-        for item in items:
-            video_url = item.get("video_url") or item.get("url")
-            if video_url:
-                formats.append({
-                    "format_id": video_url,
-                    "label": item.get("resolution") or "Video",
-                    "ext": "mp4",
-                    "filesize": item.get("size"),
-                    "direct_url": video_url,
-                })
-
-        # Fallback: GET /get
-        if not formats:
-            try:
-                r2 = await client.get(
-                    f"https://{INSTAGRAM_HOST}/get",
-                    headers=headers,
-                    params={"url": url},
-                )
-                debug_info["get_status"] = r2.status_code
-                debug_info["get_body"] = r2.text[:300]
-                if r2.status_code == 200:
-                    d2 = r2.json()
-                    video_url = d2.get("video_url") or d2.get("url")
-                    thumb = d2.get("thumbnail") or d2.get("display_url")
-                    if video_url:
-                        formats.append({
-                            "format_id": video_url,
-                            "label": "Video",
-                            "ext": "mp4",
-                            "filesize": None,
-                            "direct_url": video_url,
-                        })
-                    img_url = d2.get("display_url") or d2.get("image_url")
-                    if img_url and not video_url:
-                        formats.append({
-                            "format_id": img_url,
-                            "label": "Image",
-                            "ext": "jpg",
-                            "filesize": None,
-                            "direct_url": img_url,
-                        })
-                    data = d2 or data
-            except Exception as e:
-                debug_info["get_exception"] = str(e)
-
-        if not formats:
-            # Surface the real reason instead of a generic message
+        if r.status_code != 200:
             raise HTTPException(
                 status_code=400,
-                detail=f"Could not fetch Instagram media. Debug: {debug_info}"
+                detail=f"Could not fetch Instagram media (status {r.status_code}): {r.text[:300]}"
             )
 
+        try:
+            data = r.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Instagram API returned an invalid response.")
+
+    if not isinstance(data, list) or not data:
+        raise HTTPException(status_code=400, detail="Could not fetch Instagram media. Make sure the content is public.")
+
+    formats = []
+    seen = set()
+    for idx, entry in enumerate(data, start=1):
+        for u in (entry.get("urls") or []):
+            video_url = u.get("url")
+            if not video_url or video_url in seen:
+                continue
+            seen.add(video_url)
+            ext = u.get("extension", "mp4")
+            quality = u.get("quality")
+            kind = "Video" if ext == "mp4" else "Image"
+            label = f"Item {idx} – {kind} {quality}p" if quality else f"Item {idx} – {kind}"
+            formats.append({
+                "format_id": video_url,
+                "label": label,
+                "ext": ext,
+                "filesize": None,
+                "direct_url": video_url,
+            })
+
+    if not formats:
+        raise HTTPException(status_code=400, detail="Could not fetch Instagram media. Make sure the content is public.")
+
+    # Prefer videos first, keep relative order otherwise
+    formats.sort(key=lambda f: f["ext"] != "mp4")
+
+    first = data[0]
+    meta = first.get("meta", {}) or {}
+
     return {
-        "title": data.get("caption") or data.get("title") or "Instagram Media",
-        "thumbnail": data.get("thumbnail") or data.get("display_url"),
-        "duration": data.get("duration"),
+        "title": meta.get("title") or "Instagram Media",
+        "thumbnail": first.get("pictureUrl"),
+        "duration": None,
         "platform": "instagram",
-        "uploader": data.get("username") or data.get("owner"),
+        "uploader": meta.get("username"),
         "formats": formats,
     }
+
 # ══════════════════════════════════════════
 # YOUTUBE — youtube138
 # Endpoints: GET /search, GET /videos/info

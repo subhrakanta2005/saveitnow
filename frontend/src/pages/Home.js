@@ -1,101 +1,139 @@
-import { useState } from 'react';
-import UrlInput from '../components/UrlInput';
-import MediaResult from '../components/MediaResult';
-import { fetchMediaInfo } from '../utils/api';
+import { useNavigate } from 'react-router-dom';
 import './Home.css';
 
 const PLATFORMS = [
-  { icon: '📸', name: 'Instagram' },
-  { icon: '▶️', name: 'YouTube' },
-  { icon: '🎵', name: 'TikTok' },
-  { icon: '🐦', name: 'Twitter / X' },
-  { icon: '👥', name: 'Facebook' },
-  { icon: '📌', name: 'Pinterest' },
-  { icon: '💬', name: 'Reddit' },
-  { icon: '+', name: '1000 more' },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    icon: '📸',
+    color: '#E1306C',
+    gradient: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)',
+    desc: 'Reels, Posts, Stories, Highlights, Profile Pictures',
+    types: ['Reels', 'Posts', 'Stories', 'Highlights', 'Profile Pic'],
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    icon: '▶️',
+    color: '#FF0000',
+    gradient: 'linear-gradient(135deg, #FF0000, #cc0000)',
+    desc: 'Videos, Shorts, Playlists, Thumbnails, Audio',
+    types: ['Videos', 'Shorts', 'Audio (MP3)', 'Thumbnails'],
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok',
+    icon: '🎵',
+    color: '#010101',
+    gradient: 'linear-gradient(135deg, #010101, #69C9D0)',
+    desc: 'Videos without watermark, Audio',
+    types: ['Videos', 'Audio'],
+  },
+  {
+    id: 'twitter',
+    name: 'Twitter / X',
+    icon: '𝕏',
+    color: '#1DA1F2',
+    gradient: 'linear-gradient(135deg, #1DA1F2, #0d8bd9)',
+    desc: 'Videos, GIFs, Images from tweets',
+    types: ['Videos', 'GIFs', 'Images'],
+  },
+  {
+    id: 'facebook',
+    name: 'Facebook',
+    icon: '📘',
+    color: '#1877F2',
+    gradient: 'linear-gradient(135deg, #1877F2, #0d65d9)',
+    desc: 'Videos, Reels, Stories',
+    types: ['Videos', 'Reels', 'Stories'],
+  },
+  {
+    id: 'reddit',
+    name: 'Reddit',
+    icon: '🤖',
+    color: '#FF4500',
+    gradient: 'linear-gradient(135deg, #FF4500, #cc3700)',
+    desc: 'Videos, GIFs from any subreddit',
+    types: ['Videos', 'GIFs'],
+  },
+  {
+    id: 'pinterest',
+    name: 'Pinterest',
+    icon: '📌',
+    color: '#E60023',
+    gradient: 'linear-gradient(135deg, #E60023, #b5001c)',
+    desc: 'Videos, Images, GIFs',
+    types: ['Videos', 'Images', 'GIFs'],
+  },
 ];
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
-  const [mediaInfo, setMediaInfo] = useState(null);
-  const [currentUrl, setCurrentUrl] = useState('');
-  const [error, setError] = useState('');
-
-  const handleFetch = async (url) => {
-    setLoading(true);
-    setError('');
-    setMediaInfo(null);
-    setCurrentUrl(url);
-    try {
-      const info = await fetchMediaInfo(url);
-      setMediaInfo(info);
-    } catch (e) {
-      setError(e.message || 'Something went wrong. Check the URL and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const navigate = useNavigate();
 
   return (
     <div className="home">
-      {/* Ambient blobs */}
       <div className="blob blob-1" />
       <div className="blob blob-2" />
       <div className="blob blob-3" />
 
-      {/* Hero */}
-      <section className="hero">
-        <div className="hero-eyebrow">
-          <span className="dot" />
-          Free · No signup · No limits
-        </div>
-        <h1>Download <span className="grad-text">anything</span><br />from anywhere.</h1>
+      <div className="hero">
+        <div className="hero-eyebrow"><span className="dot" />1000+ platforms supported</div>
+        <h1>
+          Download <span className="grad-text">anything</span><br />
+          from anywhere.
+        </h1>
         <p className="hero-sub">
-          Paste a link from Instagram, YouTube, TikTok, Twitter, Facebook, Reddit,
-          and 1000+ more sites. Get your media in seconds.
+          Choose your platform below and download videos, reels, stories,
+          audio and more — free, fast, no login required.
         </p>
+      </div>
 
-        <UrlInput onFetch={handleFetch} loading={loading} />
-
-        <div className="platforms">
-          {PLATFORMS.map((p) => (
-            <div key={p.name} className="platform-badge">
-              <span>{p.icon}</span> {p.name}
+      <div className="platforms-grid">
+        {PLATFORMS.map((p) => (
+          <div
+            key={p.id}
+            className="platform-card"
+            onClick={() => navigate(`/${p.id}`)}
+            style={{ '--platform-color': p.color }}
+          >
+            <div className="platform-icon-wrap" style={{ background: p.gradient }}>
+              <span className="platform-icon">{p.icon}</span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Result */}
-      <section className="result-section">
-        {loading && (
-          <div className="loading-box">
-            <span className="big-spinner" />
-            <span>Analysing link…</span>
+            <div className="platform-info">
+              <h3 className="platform-name">{p.name}</h3>
+              <p className="platform-desc">{p.desc}</p>
+              <div className="platform-types">
+                {p.types.map(t => (
+                  <span key={t} className="type-pill">{t}</span>
+                ))}
+              </div>
+            </div>
+            <div className="platform-arrow">→</div>
           </div>
-        )}
-        {error && <div className="error-box">⚠️ {error}</div>}
-        {mediaInfo && <MediaResult info={mediaInfo} url={currentUrl} />}
-      </section>
+        ))}
+      </div>
 
-      {/* How it works */}
-      <section className="how-section">
+      <div className="how-section">
         <div className="section-label">How it works</div>
         <h2 className="section-title">Three steps. That's it.</h2>
         <div className="steps">
-          {[
-            { num: '01', color: 'linear-gradient(135deg,#7c3aed,#ec4899)', title: 'Paste the link', desc: 'Copy any video, reel, story, or post URL and paste it above.' },
-            { num: '02', color: 'linear-gradient(135deg,#ec4899,#06b6d4)', title: 'Pick your format', desc: 'Choose the quality — 1080p, 720p, 480p, or audio-only MP3.' },
-            { num: '03', color: 'linear-gradient(135deg,#06b6d4,#7c3aed)', title: 'Save it now', desc: 'Hit download. The file goes straight to your device.' },
-          ].map((s) => (
-            <div key={s.num} className="step">
-              <div className="step-num" style={{ background: s.color, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{s.num}</div>
-              <div className="step-title">{s.title}</div>
-              <div className="step-desc">{s.desc}</div>
-            </div>
-          ))}
+          <div className="step">
+            <div className="step-num grad-text">01</div>
+            <div className="step-title">Choose platform</div>
+            <div className="step-desc">Select Instagram, YouTube, TikTok or any other platform from above.</div>
+          </div>
+          <div className="step">
+            <div className="step-num grad-text">02</div>
+            <div className="step-title">Paste the link</div>
+            <div className="step-desc">Copy the URL from the app or browser and paste it in the input box.</div>
+          </div>
+          <div className="step">
+            <div className="step-num grad-text">03</div>
+            <div className="step-title">Download</div>
+            <div className="step-desc">Choose your quality and hit download. Done in seconds.</div>
+          </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

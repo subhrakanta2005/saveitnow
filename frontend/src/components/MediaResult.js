@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './MediaResult.css';
 
+const [thumbError, setThumbError] = useState(false);
 const PLATFORM_EMOJI = {
   instagram: '📸', youtube: '▶️', tiktok: '🎵',
   twitter: '🐦', facebook: '👥', reddit: '💬',
@@ -40,9 +41,9 @@ export default function MediaResult({ data, onDownload, color }) {
   return (
     <div className="result-card">
       <div className="media-preview">
-        {data.thumbnail ? (
+       {data.thumbnail && !thumbError ? (
           <img className="thumb" src={data.thumbnail} alt="thumbnail"
-            onError={(e) => e.target.style.display = 'none'} />
+            onError={() => setThumbError(true)} />
         ) : (
           <div className="thumb-placeholder">
             {PLATFORM_EMOJI[data.platform] || '🎬'}

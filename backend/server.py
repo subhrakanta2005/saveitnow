@@ -8,16 +8,24 @@ import os
 
 app = FastAPI(title="SaveItNow API")
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://saveitnow.vercel.app").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-RAPIDAPI_KEY  = os.getenv("RAPIDAPI_KEY", "YOUR_RAPIDAPI_KEY_HERE")
-INSTAGRAM_HOST = "instagram120.p.rapidapi.com"
-FACEBOOK_HOST  = "facebook-media-downloader1.p.rapidapi.com"
+RAPIDAPI_KEY    = os.getenv("RAPIDAPI_KEY", "")
+INSTAGRAM_HOST  = "instagram120.p.rapidapi.com"
+YOUTUBE_HOST    = "youtube138.p.rapidapi.com"
+FACEBOOK_HOST   = "facebook-media-downloader1.p.rapidapi.com"
+
+RAPIDAPI_HEADERS = {
+    "x-rapidapi-key": RAPIDAPI_KEY,
+    "Content-Type": "application/json",
+}
 
 class URLRequest(BaseModel):
     url: str
@@ -37,68 +45,180 @@ def detect_platform(url: str) -> str:
             return platform
     return "other"
 
-@app.get("/")
-def root():
-    return {"status": "SaveItNow API running 🚀"}
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+def format_size(b):
+    if not b: return None
+    if b > 1048576: return f"{b/1048576:.1f} MB"
+    return f"{b/1024:.0f} KB"
 
 # ══════════════════════════════════════════
 # INSTAGRAM — instagram120
+# Endpoints used: POST /links, GET /get
 # ══════════════════════════════════════════
 async def instagram_info(url: str) -> dict:
-    headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "x-rapidapi-host": INSTAGRAM_HOST,
-        "Content-Type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(
-            f"https://{INSTAGRAM_HOST}/links",
-            headers=headers,
-            json={"url": url},
-        )
-        r.raise_for_status()
-        data = r.json()
-
-    formats = []
-    items = data.get("items") or data.get("data") or []
-    for item in items:
-        video_url = item.get("video_url") or item.get("url")
-        if video_url:
-            formats.append({
-                "format_id": video_url,
-                "label": item.get("resolution") or "Video",
-                "ext": "mp4",
-                "filesize": item.get("size"),
-                "direct_url": video_url,
-            })
-
-    if not formats:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r2 = await client.get(
-                f"https://{INSTAGRAM_HOST}/get",
+    headers = {**RAPIDAPI_HEADERS, "x-rapidapi-host": INSTAGRAM_HOST}
+    async with httpx.AsyncClient(timeout=25) as client:
+        # Try /links first (best for reels/posts)
+        try:
+            r = await client.post(
+                f"https://{INSTAGRAM_HOST}/links",
                 headers=headers,
-                params={"url": url},
+                json={"url": url},
             )
-            d2 = r2.json()
-            video_url = d2.get("video_url") or d2.get("url")
+            data = r.json()
+        except Exception:
+            data = {}
+
+        formats = []
+        items = data.get("items") or data.get("data") or []
+        for item in items:
+            video_url = item.get("video_url") or item.get("url")
             if video_url:
                 formats.append({
                     "format_id": video_url,
-                    "label": "Video",
+                    "label": item.get("resolution") or "Video",
                     "ext": "mp4",
-                    "filesize": None,
+                    "filesize": item.get("size"),
                     "direct_url": video_url,
                 })
+
+        # Fallback: GET /get
+        if not formats:
+            try:
+                r2 = await client.get(
+                    f"https://{INSTAGRAM_HOST}/get",
+                    headers=headers,
+                    params={"url": url},
+                )
+                d2 = r2.json()
+                video_url = d2.get("video_url") or d2.get("url")
+                thumb = d2.get("thumbnail") or d2.get("display_url")
+                if video_url:
+                    formats.append({
+                        "format_id": video_url,
+                        "label": "Video",
+                        "ext": "mp4",
+                        "filesize": None,
+                        "direct_url": video_url,
+                    })
+                # Image post
+                img_url = d2.get("display_url") or d2.get("image_url")
+                if img_url and not video_url:
+                    formats.append({
+                        "format_id": img_url,
+                        "label": "Image",
+                        "ext": "jpg",
+                        "filesize": None,
+                        "direct_url": img_url,
+                    })
+            except Exception:
+                pass
+
+        if not formats:
+            raise HTTPException(status_code=400, detail="Could not fetch Instagram media. Make sure the content is public.")
 
     return {
         "title": data.get("caption") or data.get("title") or "Instagram Media",
         "thumbnail": data.get("thumbnail") or data.get("display_url"),
         "duration": data.get("duration"),
         "platform": "instagram",
+        "uploader": data.get("username") or data.get("owner"),
+        "formats": formats,
+    }
+
+# ══════════════════════════════════════════
+# YOUTUBE — youtube138
+# Endpoints: GET /search, GET /videos/info
+# POST /download — gets stream URL
+# ══════════════════════════════════════════
+async def youtube_info(url: str) -> dict:
+    headers = {**RAPIDAPI_HEADERS, "x-rapidapi-host": YOUTUBE_HOST}
+
+    # Extract video ID
+    vid_id = None
+    match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+    if match:
+        vid_id = match.group(1)
+
+    if not vid_id:
+        raise HTTPException(status_code=400, detail="Could not extract YouTube video ID from URL.")
+
+    async with httpx.AsyncClient(timeout=25) as client:
+        try:
+            r = await client.get(
+                f"https://{YOUTUBE_HOST}/videos/info",
+                headers=headers,
+                params={"id": vid_id},
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            # Fallback to yt-dlp if RapidAPI fails
+            return await ytdlp_info(url, "youtube")
+
+    # Parse youtube138 response
+    video_details = data.get("videoDetails") or data.get("video") or {}
+    streaming = data.get("streamingData") or {}
+
+    formats = []
+    # Try adaptive formats first (separate video streams)
+    adaptive = streaming.get("adaptiveFormats") or []
+    for f in adaptive:
+        if "video" in f.get("mimeType", "") and "mp4" in f.get("mimeType", ""):
+            height = f.get("height")
+            if height:
+                formats.append({
+                    "format_id": f.get("itag", str(height)),
+                    "label": f"{height}p",
+                    "ext": "mp4",
+                    "filesize": format_size(f.get("contentLength")),
+                    "direct_url": f.get("url"),
+                })
+
+    # Progressive formats (video+audio combined)
+    for f in (streaming.get("formats") or []):
+        if "mp4" in f.get("mimeType", ""):
+            height = f.get("height")
+            if height:
+                formats.append({
+                    "format_id": f.get("itag", str(height)),
+                    "label": f"{height}p (HD)",
+                    "ext": "mp4",
+                    "filesize": format_size(f.get("contentLength")),
+                    "direct_url": f.get("url"),
+                })
+
+    # Sort by quality
+    formats.sort(key=lambda x: int(x["label"].split("p")[0]) if x["label"][0].isdigit() else 0, reverse=True)
+    formats = formats[:5]  # top 5 qualities
+
+    # Audio only
+    for f in adaptive:
+        if "audio" in f.get("mimeType", ""):
+            formats.append({
+                "format_id": "audio",
+                "label": "Audio Only (MP3)",
+                "ext": "mp3",
+                "filesize": format_size(f.get("contentLength")),
+                "direct_url": f.get("url"),
+            })
+            break
+
+    if not formats:
+        # Fallback to yt-dlp
+        return await ytdlp_info(url, "youtube")
+
+    title = video_details.get("title") or data.get("title") or "YouTube Video"
+    thumbnail = None
+    thumbs = video_details.get("thumbnail", {}).get("thumbnails") or []
+    if thumbs:
+        thumbnail = thumbs[-1].get("url")
+
+    return {
+        "title": title,
+        "thumbnail": thumbnail,
+        "duration": video_details.get("lengthSeconds"),
+        "platform": "youtube",
+        "uploader": video_details.get("author") or video_details.get("channelTitle"),
         "formats": formats,
     }
 
@@ -107,55 +227,79 @@ async def instagram_info(url: str) -> dict:
 # POST /get_media  body: { "url": "..." }
 # ══════════════════════════════════════════
 async def facebook_info(url: str) -> dict:
-    headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "x-rapidapi-host": FACEBOOK_HOST,
-        "Content-Type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(
-            f"https://{FACEBOOK_HOST}/get_media",
-            headers=headers,
-            json={"url": url},
-        )
-        r.raise_for_status()
-        data = r.json()
+    headers = {**RAPIDAPI_HEADERS, "x-rapidapi-host": FACEBOOK_HOST}
+    async with httpx.AsyncClient(timeout=25) as client:
+        try:
+            r = await client.post(
+                f"https://{FACEBOOK_HOST}/get_media",
+                headers=headers,
+                json={"url": url},
+            )
+            r.raise_for_status()
+            data = r.json()
+        except httpx.HTTPStatusError as e:
+            # Fallback to yt-dlp
+            return await ytdlp_info(url, "facebook")
 
-    # Response fields: direct_media_url, media_type, source_url, status, thumbnail
-    direct = data.get("direct_media_url")
+    direct = data.get("direct_media_url") or data.get("url")
     if not direct:
-        raise HTTPException(status_code=400, detail="Facebook API returned no download URL")
+        return await ytdlp_info(url, "facebook")
 
-    media_type = data.get("media_type", "video").capitalize()
+    media_type = data.get("media_type", "video")
     formats = [{
         "format_id": direct,
-        "label": media_type,
+        "label": f"{media_type.capitalize()}",
         "ext": "mp4",
         "filesize": None,
         "direct_url": direct,
     }]
 
+    # HD version if available
+    hd_url = data.get("hd_url") or data.get("hd")
+    if hd_url and hd_url != direct:
+        formats.insert(0, {
+            "format_id": hd_url,
+            "label": "HD Video",
+            "ext": "mp4",
+            "filesize": None,
+            "direct_url": hd_url,
+        })
+
     return {
-        "title": f"Facebook {media_type}",
+        "title": data.get("title") or "Facebook Video",
         "thumbnail": data.get("thumbnail"),
-        "duration": None,
+        "duration": data.get("duration"),
         "platform": "facebook",
+        "uploader": data.get("page_name") or data.get("author"),
         "formats": formats,
     }
 
 # ══════════════════════════════════════════
-# YT-DLP — YouTube, TikTok, Twitter, Reddit,
+# YT-DLP — TikTok, Twitter, Reddit,
 #           Pinterest, and everything else
 # ══════════════════════════════════════════
 async def ytdlp_info(url: str, platform: str = "other") -> dict:
-    ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except yt_dlp.utils.DownloadError as e:
+        msg = str(e).lower()
+        if "private" in msg or "login" in msg:
+            raise HTTPException(status_code=400, detail="This content is private or requires login.")
+        raise HTTPException(status_code=400, detail="Could not fetch this URL. Make sure it is public.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     formats = []
     seen = set()
     for f in (info.get("formats") or []):
-        if f.get("vcodec") != "none" and f.get("height"):
+        if f.get("vcodec") != "none" and f.get("height") and f.get("url"):
             label = f"{f['height']}p"
             if label not in seen:
                 seen.add(label)
@@ -163,46 +307,71 @@ async def ytdlp_info(url: str, platform: str = "other") -> dict:
                     "format_id": f["format_id"],
                     "label": label,
                     "ext": f.get("ext", "mp4"),
-                    "filesize": f.get("filesize"),
+                    "filesize": format_size(f.get("filesize")),
                     "direct_url": f.get("url"),
                 })
-    formats.append({
-        "format_id": "bestaudio/best",
-        "label": "Audio Only (MP3)",
-        "ext": "mp3",
-        "filesize": None,
-        "direct_url": None,
-    })
-    formats.sort(
-        key=lambda x: int(x["label"].replace("p","")) if x["label"].endswith("p") else -1,
-        reverse=True
-    )
+
+    formats.sort(key=lambda x: int(x["label"].replace("p", "")) if x["label"].endswith("p") else 0, reverse=True)
+    formats = formats[:5]
+
+    # Audio
+    for f in (info.get("formats") or []):
+        if f.get("vcodec") == "none" and f.get("acodec") != "none" and f.get("url"):
+            formats.append({
+                "format_id": f["format_id"],
+                "label": "Audio Only (MP3)",
+                "ext": "mp3",
+                "filesize": format_size(f.get("filesize")),
+                "direct_url": f.get("url"),
+            })
+            break
+
+    if not formats and info.get("url"):
+        formats.append({
+            "format_id": "best",
+            "label": "Best Quality",
+            "ext": "mp4",
+            "filesize": None,
+            "direct_url": info.get("url"),
+        })
 
     return {
-        "title": info.get("title", "Unknown"),
+        "title": info.get("title", "Video"),
         "thumbnail": info.get("thumbnail"),
         "duration": info.get("duration"),
         "platform": platform,
-        "formats": formats[:7],
+        "uploader": info.get("uploader") or info.get("channel"),
+        "formats": formats,
     }
 
 # ══════════════════════════════════════════
-# ROUTER
+# MAIN ROUTER
 # ══════════════════════════════════════════
+@app.get("/")
+def root():
+    return {"status": "SaveItNow API running 🚀"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.post("/info")
 async def get_info(request: URLRequest):
-    url = request.url
+    url = request.url.strip()
+    if not url.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid URL.")
     platform = detect_platform(url)
     try:
         if platform == "instagram":
             return await instagram_info(url)
+        elif platform == "youtube":
+            return await youtube_info(url)
         elif platform == "facebook":
             return await facebook_info(url)
         else:
-            # YouTube, TikTok, Twitter, Reddit, Pinterest, other → yt-dlp
             return await ytdlp_info(url, platform)
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=400, detail=f"API error {e.response.status_code}: {e.response.text}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -210,25 +379,25 @@ async def get_info(request: URLRequest):
 async def download(request: URLRequest, format_id: str = "best"):
     platform = detect_platform(request.url)
 
-    # RapidAPI platforms — format_id is the direct URL itself
-    if platform in ("instagram", "facebook") and format_id.startswith("http"):
+    # RapidAPI platforms — format_id IS the direct URL
+    if platform in ("instagram", "facebook", "youtube") and format_id.startswith("http"):
         return {"download_url": format_id, "title": "media", "ext": "mp4"}
 
     # yt-dlp platforms
-    ydl_opts = {"quiet": True, "format": format_id, "skip_download": True}
+    ydl_opts = {"quiet": True, "format": format_id, "skip_download": True, "noplaylist": True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(request.url, download=False)
-        direct_url = None
-        if "url" in info:
-            direct_url = info["url"]
-        elif "formats" in info:
-            for f in reversed(info["formats"]):
+        direct_url = info.get("url")
+        if not direct_url:
+            for f in reversed(info.get("formats", [])):
                 if f.get("url") and f.get("vcodec") != "none":
                     direct_url = f["url"]
                     break
         if not direct_url:
             raise HTTPException(status_code=404, detail="No downloadable URL found")
         return {"download_url": direct_url, "title": info.get("title", "video"), "ext": "mp4"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

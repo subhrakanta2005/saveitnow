@@ -1,10 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi import Response
+from urllib.parse import quote
 import yt_dlp
 import httpx
 import re
 import os
+
 
 app = FastAPI(title="SaveItNow API")
 
@@ -119,7 +122,10 @@ async def instagram_info(url: str) -> dict:
 
     return {
         "title": meta.get("title") or "Instagram Media",
-        "thumbnail": first.get("pictureUrl"),
+        "thumbnail": (
+            f"{BACKEND_PUBLIC_URL}/proxy/image?url={quote(first.get('pictureUrl'), safe='')}"
+            if first.get("pictureUrl") else None
+        ),
         "duration": None,
         "platform": "instagram",
         "uploader": meta.get("username"),
@@ -355,6 +361,25 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "https://saveitnow.onrender.com")
+
+@app.get("/proxy/image")
+async def proxy_image(url: str):
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Referer": "https://www.instagram.com/",
+            })
+        if r.status_code != 200:
+            raise HTTPException(status_code=404, detail="Could not fetch image")
+        content_type = r.headers.get("content-type", "image/jpeg")
+        return Response(content=r.content, media_type=content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/info")
 async def get_info(request: URLRequest):

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fetchMediaInfo, fetchDownloadUrl } from '../utils/api';
+import { fetchMediaInfo, fetchDownloadUrl, buildProxyDownloadUrl } from '../utils/api';
 import MediaResult from '../components/MediaResult';
 import './PlatformPage.css';
 
@@ -148,28 +148,24 @@ export default function PlatformPage({ platform }) {
     }
   };
 
+  const triggerDownload = (proxyUrl) => {
+    const a = document.createElement('a');
+    a.href = proxyUrl;
+    // No `a.download` needed here — the backend sets Content-Disposition
+    // itself, which works regardless of the media's origin.
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const handleDownload = async (formatId, title, ext) => {
     try {
       if (formatId.startsWith('http')) {
-        const a = document.createElement('a');
-        a.href = formatId;
-        a.download = `${title || 'media'}.${ext || 'mp4'}`;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        triggerDownload(buildProxyDownloadUrl(formatId, title, ext));
         return;
       }
       const data = await fetchDownloadUrl(url, formatId);
-      const a = document.createElement('a');
-      a.href = data.download_url;
-      a.download = `${data.title || title || 'media'}.${ext || 'mp4'}`;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      triggerDownload(buildProxyDownloadUrl(data.download_url, data.title || title, ext));
     } catch (err) {
       setError(err.message || 'Download failed. Try again.');
     }
@@ -293,3 +289,6 @@ export default function PlatformPage({ platform }) {
     </div>
   );
 }
+
+
+

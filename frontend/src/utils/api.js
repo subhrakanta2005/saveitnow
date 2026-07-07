@@ -25,3 +25,19 @@ export const fetchDownloadUrl = async (url, format_id) => {
   }
   return res.json();
 };
+
+// Builds a URL to our own backend that streams a direct CDN media URL
+// back with a Content-Disposition header, so the browser actually saves
+// the file. Needed because the `download` attribute on an <a> tag is
+// ignored by browsers for cross-origin URLs (e.g. Instagram/YouTube/
+// Facebook CDN links) — fetching it through our own origin fixes that.
+export const buildProxyDownloadUrl = (directUrl, filename, ext) => {
+  const params = new URLSearchParams({
+    url: directUrl,
+    filename: filename || 'media',
+    ext: ext || 'mp4',
+  });
+  return `${API_BASE}/proxy/download?${params.toString()}`;
+};
+
+
